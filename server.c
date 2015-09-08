@@ -26,14 +26,35 @@
 #include <time.h>
 #include <errno.h>
 
+/*
+ * No glibc wrappers exist for memfd_create(2), so provide our own.
+ *
+ * Also define memfd fcntl sealing macros. While they are already
+ * defined in the kernel header file <linux/fcntl.h>, that file as
+ * a whole conflicts with the original glibc header <fnctl.h>.
+ */
+
+static int memfd_create(const char *name, unsigned int flags) {
+    return syscall(__NR_memfd_create, name, flags);
+}
+
+#ifndef F_LINUX_SPECIFIC_BASE
+#define F_LINUX_SPECIFIC_BASE 1024
+#endif
+
+#ifndef F_ADD_SEALS
+#define F_ADD_SEALS (F_LINUX_SPECIFIC_BASE + 9)
+#define F_GET_SEALS (F_LINUX_SPECIFIC_BASE + 10)
+
+#define F_SEAL_SEAL     0x0001  /* prevent further seals from being set */
+#define F_SEAL_SHRINK   0x0002  /* prevent file from shrinking */
+#define F_SEAL_GROW     0x0004  /* prevent file from growing */
+#define F_SEAL_WRITE    0x0008  /* prevent writes */
+#endif
+
 static void error(char *msg) {
     perror(msg);
     exit(EXIT_FAILURE);
-}
-
-/* memfd_create has no GLIBC wrappers yet. Create our own */
-static int memfd_create(const char *name, unsigned int flags) {
-    return syscall(__NR_memfd_create, name, flags);
 }
 
 static int new_memfd_region(char *unique_str) {
@@ -48,6 +69,10 @@ static int new_memfd_region(char *unique_str) {
     ret = ftruncate(fd, shm_size);
     if (ret == -1)
         error("ftruncate()");
+
+    ret = fcntl(fd, F_ADD_SEALS, F_SEAL_SHRINK);
+    if (ret == -1)
+        error("fcntl(F_ADD_SEALS)");
 
     shm = mmap(NULL, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_NORESERVE, fd, 0);
     if (shm == MAP_FAILED)
@@ -117,7 +142,7 @@ static void start_server_and_send_memfd_to_clients() {
     snprintf(address.sun_path, UNIX_PATH_MAX, LOCAL_SOCKET_NAME);
 
     ret = unlink(LOCAL_SOCKET_NAME);
-    if (ret != 0 && ret != -ENOENT)
+    if (ret != 0 && ret != -ENOENT && ret != -EPERM)
         error("unlink()");
 
     ret = bind(sock, (struct sockaddr *) &address, sizeof(address));

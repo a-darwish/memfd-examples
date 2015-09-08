@@ -106,11 +106,19 @@ static int connect_to_server_and_get_memfd_fd() {
 int main(int argc, char **argv) {
     char *shm;
     const int shm_size = 1024;
-    int fd;
+    int ret, fd;
 
     fd = connect_to_server_and_get_memfd_fd();
     if (fd == -1)
         quit("Received invalid memfd fd from server equaling -1");
+
+    ret = ftruncate(fd, 0);
+    if (ret != -1) {
+        fprintf(stderr, "Server memfd F_SEAL_SHRINK protection is not working\n");
+        fprintf(stderr, "We were able to shrink the SHM area behind server's back\n");
+        fprintf(stderr, "This can easily introduce SIGBUS faults in the server\n");
+        quit("Exiting!\n");
+    }
 
     shm = mmap(NULL, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_NORESERVE, fd, 0);
     if (shm == MAP_FAILED)
