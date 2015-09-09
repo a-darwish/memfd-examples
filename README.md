@@ -15,12 +15,19 @@ Check the references at the bottom of this page for primary documentation.
 Server creates a classic Unix domain socket, and waits for clients to
 connect.
 
-Upon a client connection, a memfd region is created and filled with a
-unique message. The file descriptor for this memory region is then
-passed to the client using unix sockets fd-passing mechanisms.
+Upon a client connection, server creates a memfd region and fill it with
+a unique message. The file descriptor for this memory region is then
+*sealed* and passed to the client using Unix domain sockets file-descriptor
+passing mechanisms.
 
-The client can then read the message from the server, through the
-passed file descriptor, in a zero-copy and sealed manner.
+On the client side, upon connecting with the server, it recreives the
+passed memfd file descriptor. Afterwards, the client tries to
+break the `SHRINK`, `WRITE`, and `SEAL` memfd seals added by the server.
+
+If everything goes as planned, the client can go and read the server-sent
+message by `mmap()`-ing the passed file descriptor. This form of
+communication is both zero-copy, and hopefully secure-enough, for zero-trust
+IPC applications.
 
 ### Requirements
 

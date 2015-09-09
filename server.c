@@ -72,13 +72,25 @@ static int new_memfd_region(char *unique_str) {
 
     ret = fcntl(fd, F_ADD_SEALS, F_SEAL_SHRINK);
     if (ret == -1)
-        error("fcntl(F_ADD_SEALS)");
+        error("fcntl(F_SEAL_SHRINK)");
 
-    shm = mmap(NULL, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_NORESERVE, fd, 0);
+    shm = mmap(NULL, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (shm == MAP_FAILED)
         error("mmap()");
 
     sprintf(shm, "Secure zero-copy message from server: %s", unique_str);
+
+    /* Seal writes too, but unmap our shared mappings beforehand */
+    ret = munmap(shm, shm_size);
+    if (ret == -1)
+        error("munmap()");
+    ret = fcntl(fd, F_ADD_SEALS, F_SEAL_WRITE);
+    if (ret == -1)
+        error("fcntl(F_SEAL_WRITE)");
+
+    ret = fcntl(fd, F_ADD_SEALS, F_SEAL_SEAL);
+    if (ret == -1)
+        error("fcntl(F_SEAL_SEAL)");
 
     return fd;
 }

@@ -23,6 +23,27 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
+#include <errno.h>
+
+/*
+ * Define memfd fcntl sealing macros. While they are already
+ * defined in the kernel header file <linux/fcntl.h>, that file as
+ * a whole conflicts with the original glibc header <fnctl.h>.
+ */
+
+#ifndef F_LINUX_SPECIFIC_BASE
+#define F_LINUX_SPECIFIC_BASE 1024
+#endif
+
+#ifndef F_ADD_SEALS
+#define F_ADD_SEALS (F_LINUX_SPECIFIC_BASE + 9)
+#define F_GET_SEALS (F_LINUX_SPECIFIC_BASE + 10)
+
+#define F_SEAL_SEAL     0x0001  /* prevent further seals from being set */
+#define F_SEAL_SHRINK   0x0002  /* prevent file from shrinking */
+#define F_SEAL_GROW     0x0004  /* prevent file from growing */
+#define F_SEAL_WRITE    0x0008  /* prevent writes */
+#endif
 
 static void error(char *msg) {
     perror(msg);
@@ -38,8 +59,8 @@ static void quit(const char* fmt, ...) {
   exit(EXIT_FAILURE);
 }
 
-/* Receive file descriptor sent from the server over
- * the already-connected socket @conn. */
+/* Receive file descriptor passed from the server over
+ * the already-connected unix domain socket @conn. */
 static int receive_fd(int conn) {
     struct msghdr msgh;
     struct iovec iov;
@@ -104,23 +125,47 @@ static int connect_to_server_and_get_memfd_fd() {
 }
 
 int main(int argc, char **argv) {
-    char *shm;
+    char *shm, *shm1, *shm2;
     const int shm_size = 1024;
-    int ret, fd;
+    int ret, fd, seals;
 
     fd = connect_to_server_and_get_memfd_fd();
     if (fd == -1)
         quit("Received invalid memfd fd from server equaling -1");
 
+    seals = fcntl(fd, F_GET_SEALS);
+    if (! (seals & F_SEAL_SHRINK))
+        quit("Got non-sealed memfd. Expected an F_SEAL_SHRINK one\n");
+    if (! (seals & F_SEAL_WRITE))
+        quit("Got non-sealed memfd. Expected an F_SEAL_WRITE one\n");
+    if (! (seals & F_SEAL_SEAL))
+        quit("Got non-sealed memfd. Expected an F_SEAL_SEAL one\n");
+
     ret = ftruncate(fd, 0);
     if (ret != -1) {
-        fprintf(stderr, "Server memfd F_SEAL_SHRINK protection is not working\n");
-        fprintf(stderr, "We were able to shrink the SHM area behind server's back\n");
-        fprintf(stderr, "This can easily introduce SIGBUS faults in the server\n");
+        fprintf(stderr, "Server memfd F_SEAL_SHRINK protection is not working.\n");
+        fprintf(stderr, "We were able to shrink the SHM area behind server's back!\n");
+        fprintf(stderr, "This can easily introduce SIGBUS faults in the server.\n");
         quit("Exiting!\n");
     }
 
-    shm = mmap(NULL, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_NORESERVE, fd, 0);
+    ret = fcntl(fd, F_ADD_SEALS, F_SEAL_GROW);
+    if (ret != -EPERM) {
+        fprintf(stderr, "Server memfd F_SEAL_SEAL protection is not working\n");
+        fprintf(stderr, "We were able to add an extra seal (GROW) to the memfd!\n");
+        quit("Exiting!\n");
+    }
+
+    /* MAP_SHARED should fail on write-sealed memfds */
+    shm1 = mmap(NULL, shm_size, PROT_READ, MAP_SHARED, fd, 0);
+    shm2 = mmap(NULL, shm_size, PROT_WRITE, MAP_SHARED, fd, 0);
+    if (shm1 != MAP_FAILED || shm2 != MAP_FAILED) {
+        fprintf(stderr, "Server memfd F_SEAL_WRITE protection is not working\n");
+        fprintf(stderr, "We were able to succesfully map SHM area as writeable!\n");
+        quit("Exiting!\n");
+    }
+
+    shm = mmap(NULL, shm_size, PROT_READ, MAP_PRIVATE, fd, 0);
     if (shm == MAP_FAILED)
         error("mmap");
 
