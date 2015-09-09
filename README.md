@@ -17,10 +17,10 @@ connect.
 
 Upon a client connection, a memfd region is created and filled with a
 unique message. The file descriptor for this memory region is then
-passed to the client using unix-sockets fd-passing mechanisms.
+passed to the client using unix sockets fd-passing mechanisms.
 
 The client can then read the message from the server, through the
-passed file descriptor, in a zero-copy and secure/sealed manner.
+passed file descriptor, in a zero-copy and sealed manner.
 
 ### Requirements
 
@@ -31,7 +31,7 @@ passed file descriptor, in a zero-copy and secure/sealed manner.
   - Arch Linux: `sudo pacman -S linux-headers`
 
 ### References:
-- [memfd_create(2)](https://dvdhrm.wordpress.com/2014/06/10/memfd_create2/), David Herrman blog (*memfd author*)
+-  [On memfd_create(2)](https://dvdhrm.wordpress.com/2014/06/10/memfd_create2/), David Herrman (*memfd author*)
 - [memfd_create(2) manpage](http://man7.org/linux/man-pages/man2/memfd_create.2.html)
 - [The Linux Programming Interface](http://www.man7.org/tlpi/), Section 61.13.3 "Passing File Descriptors"
-- [FD Passing for DRI.Next](http://keithp.com/blogs/fd-passing/), Keith Packard blog (*X.org maintainer*)
+- [FD Passing for DRI.Next](http://keithp.com/blogs/fd-passing/), Keith Packard (*Xorg maintainer*)

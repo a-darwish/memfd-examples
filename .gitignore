@@ -35,6 +35,10 @@
 .cproject
 .project
 
-# emacs/vim cached files
+# Emacs/Vim cached files
 *~
 *#
+
+# Binary files
+server
+client
