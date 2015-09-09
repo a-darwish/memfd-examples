@@ -6,10 +6,7 @@ DOMAIN_SOCK = unix_socket
 
 all: $(PROGRAMS)
 
-server: server.c
-	$(CC) $(CFLAGS) $< -o $@
-
-client: client.c
+%: %.c
 	$(CC) $(CFLAGS) $< -o $@
 
 .PHONY: clean
