@@ -95,6 +95,9 @@ static int receive_fd(int conn) {
     }
 
     cmsgh = CMSG_FIRSTHDR(&msgh);
+    if (!cmsgh)
+        quit("Expected a single recvmsg() header with a memfd fd included. Got zero!\n");
+
     if (cmsgh->cmsg_level != SOL_SOCKET)
         quit("invalid cmsg_level %d\n", cmsgh->cmsg_level);
     if (cmsgh->cmsg_type != SCM_RIGHTS)
