@@ -45,18 +45,20 @@
 #define F_SEAL_WRITE    0x0008  /* prevent writes */
 #endif
 
-static void error(char *msg) {
-    perror(msg);
-    exit(EXIT_FAILURE);
+#define errorp(msg) {				\
+    perror("[Error] " msg);			\
+    exit(EXIT_FAILURE);				\
 }
 
-static void quit(const char* fmt, ...) {
-  va_list arglist;
+#define error(...) {				\
+    fprintf(stderr, "[Error] ");		\
+    fprintf(stderr, __VA_ARGS__);		\
+    fprintf(stderr, "\n");			\
+}
 
-  va_start(arglist, fmt);
-  vfprintf(stderr, fmt, arglist );
-  va_end( arglist );
-  exit(EXIT_FAILURE);
+#define quit(...) {				\
+    error(__VA_ARGS__);				\
+    exit(EXIT_FAILURE);				\
 }
 
 /* Receive file descriptor passed from the server over
@@ -86,22 +88,22 @@ static int receive_fd(int conn) {
 
     int size = recvmsg(conn, &msgh, 0);
     if (size == -1)
-        error("recvmsg()");
+        errorp("recvmsg()");
 
     if (size != 1) {
-        fprintf(stderr, "Expected a placeholder message data of length 1\n");
-        fprintf(stderr, "Received a message of length %d instead\n", size);
-        quit("Exiting!\n");
+        error("Expected a placeholder message data of length 1");
+        error("Received a message of length %d instead", size);
+        quit("Exiting!");
     }
 
     cmsgh = CMSG_FIRSTHDR(&msgh);
     if (!cmsgh)
-        quit("Expected a single recvmsg() header with a memfd fd included. Got zero!\n");
+        quit("Expected a single recvmsg() header with a memfd fd included. Got zero!");
 
     if (cmsgh->cmsg_level != SOL_SOCKET)
-        quit("invalid cmsg_level %d\n", cmsgh->cmsg_level);
+        quit("invalid cmsg_level %d", cmsgh->cmsg_level);
     if (cmsgh->cmsg_type != SCM_RIGHTS)
-        quit("invalid cmsg_type %d\n", cmsgh->cmsg_type);
+        quit("invalid cmsg_type %d", cmsgh->cmsg_type);
 
     return *((int *) CMSG_DATA(cmsgh));
 }
@@ -114,7 +116,7 @@ static int connect_to_server_and_get_memfd_fd() {
 
     conn = socket(PF_UNIX, SOCK_STREAM, 0);
     if (conn == -1)
-        error("socket()");
+        errorp("socket()");
 
     memset(&address, 0, sizeof(address));
     address.sun_family = AF_UNIX;
@@ -122,7 +124,7 @@ static int connect_to_server_and_get_memfd_fd() {
 
     ret = connect(conn, (struct sockaddr *)&address, sizeof(struct sockaddr_un));
     if (ret != 0)
-        error("connect()");
+        errorp("connect()");
 
     return receive_fd(conn);
 }
@@ -138,39 +140,39 @@ int main(int argc, char **argv) {
 
     seals = fcntl(fd, F_GET_SEALS);
     if (! (seals & F_SEAL_SHRINK))
-        quit("Got non-sealed memfd. Expected an F_SEAL_SHRINK one\n");
+        quit("Got non-sealed memfd. Expected an F_SEAL_SHRINK one");
     if (! (seals & F_SEAL_WRITE))
-        quit("Got non-sealed memfd. Expected an F_SEAL_WRITE one\n");
+        quit("Got non-sealed memfd. Expected an F_SEAL_WRITE one");
     if (! (seals & F_SEAL_SEAL))
-        quit("Got non-sealed memfd. Expected an F_SEAL_SEAL one\n");
+        quit("Got non-sealed memfd. Expected an F_SEAL_SEAL one");
 
     ret = ftruncate(fd, 0);
     if (ret != -1) {
-        fprintf(stderr, "Server memfd F_SEAL_SHRINK protection is not working.\n");
-        fprintf(stderr, "We were able to shrink the SHM area behind server's back!\n");
-        fprintf(stderr, "This can easily introduce SIGBUS faults in the server.\n");
-        quit("Exiting!\n");
+	error("Server memfd F_SEAL_SHRINK protection is not working.");
+        error("We were able to shrink the SHM area behind server's back!");
+        error("This can easily introduce SIGBUS faults in the server.");
+        quit("Exiting!");
     }
 
     ret = fcntl(fd, F_ADD_SEALS, F_SEAL_GROW);
     if (ret != -EPERM) {
-        fprintf(stderr, "Server memfd F_SEAL_SEAL protection is not working\n");
-        fprintf(stderr, "We were able to add an extra seal (GROW) to the memfd!\n");
-        quit("Exiting!\n");
+        error("Server memfd F_SEAL_SEAL protection is not working");
+        error("We were able to add an extra seal (GROW) to the memfd!");
+        quit("Exiting!");
     }
 
     /* MAP_SHARED should fail on write-sealed memfds */
     shm1 = mmap(NULL, shm_size, PROT_READ, MAP_SHARED, fd, 0);
     shm2 = mmap(NULL, shm_size, PROT_WRITE, MAP_SHARED, fd, 0);
     if (shm1 != MAP_FAILED || shm2 != MAP_FAILED) {
-        fprintf(stderr, "Server memfd F_SEAL_WRITE protection is not working\n");
-        fprintf(stderr, "We were able to succesfully map SHM area as writeable!\n");
-        quit("Exiting!\n");
+        error("Server memfd F_SEAL_WRITE protection is not working");
+        error("We were able to succesfully map SHM area as writeable!");
+        quit("Exiting!");
     }
 
     shm = mmap(NULL, shm_size, PROT_READ, MAP_PRIVATE, fd, 0);
     if (shm == MAP_FAILED)
-        error("mmap");
+        errorp("mmap");
 
     printf("Message: %s\n", shm);
 
