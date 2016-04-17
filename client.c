@@ -38,6 +38,12 @@
     fprintf(stderr, "\n");			\
 }
 
+#define info(...) {				\
+    fprintf(stdout, "[Info ] ");		\
+    fprintf(stdout, __VA_ARGS__);		\
+    fprintf(stdout, "\n");			\
+}
+
 #define quit(...) {				\
     error(__VA_ARGS__);				\
     exit(EXIT_FAILURE);				\
