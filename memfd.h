@@ -2,6 +2,8 @@
 #define _MEMFD_H
 
 /*
+ * SPDX-License-Identifier: Unlicense
+ *
  * No glibc wrappers exist for memfd_create(2), so provide our own.
  *
  * Also define memfd fcntl sealing macros. While they are already
